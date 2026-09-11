@@ -1,6 +1,6 @@
 workflows:
   ios-build:
-    name: iOS build unsigned Runner.app
+    name: iOS build unsigned ipa
     instance_type: mac_mini_m2
     max_build_duration: 120
     environment:
@@ -9,13 +9,14 @@ workflows:
     scripts:
       - flutter clean
       - flutter pub get
-      # 只编译flutter产物，不做ios设备构建！flutter build ios删掉！
-      - flutter assemble -d ios --debug
       - cd ios && pod install && cd ..
-      # 直接调用xcodebuild，传入禁用签名参数，绕开Flutter的Team校验
-      - xcodebuild build -workspace ios/Runner.xcworkspace -scheme Runner -configuration Debug -destination generic/platform=iOS CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
-      # 把编译出来的Runner.app复制出来，作为制品
-      - mkdir -p build/ios/iphoneos
-      - cp -r build/ios/Debug-iphoneos/Runner.app build/ios/iphoneos/Runner.app
+      # 在CI里直接修改pbxproj，注入占位Team ID（A9B8C7D6E5，随便一串10字符）
+      - sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = A9B8C7D6E5;/g' ios/Runner.xcodeproj/project.pbxproj
+      # 现在Flutter不再拦截，继续编译，不签名
+      - flutter build ios --debug --no-codesign
+      # Mac CI上直接打包Payload生成标准ipa，下载后丢Sideloadly
+      - mkdir -p build/ios/Payload
+      - cp -r build/ios/iphoneos/Runner.app build/ios/Payload/Runner.app
+      - cd build/ios && zip -q -r app.ipa Payload
     artifacts:
-      - build/ios/iphoneos/**/*.app
+      - build/ios/app.ipa
