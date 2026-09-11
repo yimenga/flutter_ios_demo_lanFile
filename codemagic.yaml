@@ -1,19 +1,16 @@
 workflows:
   ios-build:
-    name: iOS Debug unsigned ipa
+    name: iOS build unsigned app
     instance_type: mac_mini_m2
     max_build_duration: 120
     environment:
       flutter: stable
       xcode: latest
     scripts:
+      - flutter clean
       - flutter pub get
       - cd ios && pod install && cd ..
-      # 1. flutter build ios，编译app产物，不归档
+      # 编译，输出 build/ios/iphoneos/Runner.app
       - flutter build ios --debug --no-codesign
-      # 2. xcodebuild archive，强制关闭签名，不需要Team
-      - xcodebuild archive -workspace ios/Runner.xcworkspace -scheme Runner -configuration Debug -archivePath build/ios/Runner.xcarchive CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
-      # 3. 导出ipa，使用exportOptions.plist
-      - xcodebuild -exportArchive -archivePath build/ios/Runner.xcarchive -exportOptionsPlist ios/ExportOptions.plist -exportPath build/ios/ipa
     artifacts:
-      - build/ios/ipa/*.ipa
+      - build/ios/iphoneos/**/*.app
