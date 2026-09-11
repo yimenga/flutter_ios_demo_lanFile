@@ -1,0 +1,12 @@
+workflows:
+  ios-build:
+    name: iOS Debug build
+    instance_type: mac_mini
+    environment:
+      flutter: 3.22.0
+    scripts:
+      - flutter pub get
+      - cd ios && pod install && cd ..
+      - flutter build ipa --debug --build-name=1.0.0 --build-number=1 --no-codesign
+    artifacts:
+      - build/ios/archive/Runner.xcarchive/**
