@@ -7,6 +7,7 @@ workflows:
     scripts:
       - flutter pub get
       - cd ios && pod install && cd ..
-      - flutter build ipa --debug --build-name=1.0.0 --build-number=1 --no-codesign
+      # 重点：加上export，直接导出ipa
+      - flutter build ipa --debug --build-name=1.0.0 --build-number=1 --no-codesign --export-options-plist=ios/ExportOptions.plist
     artifacts:
-      - build/ios/archive/Runner.xcarchive/**
+      - build/ios/ipa/*.ipa
