@@ -10,7 +10,8 @@ workflows:
       - flutter clean
       - flutter pub get
       - cd ios && pod install && cd ..
-      # 编译，输出 build/ios/iphoneos/Runner.app
+      # 自动修改pbxproj，写入一个占位Team，绕过Flutter Team校验
+      - sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = XXXXXXXX;/' ios/Runner.xcodeproj/project.pbxproj
       - flutter build ios --debug --no-codesign
     artifacts:
       - build/ios/iphoneos/**/*.app
