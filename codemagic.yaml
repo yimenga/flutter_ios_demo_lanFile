@@ -1,6 +1,6 @@
 workflows:
   ios-build:
-    name: iOS build unsigned app
+    name: iOS build unsigned Runner.app
     instance_type: mac_mini_m2
     max_build_duration: 120
     environment:
@@ -9,9 +9,13 @@ workflows:
     scripts:
       - flutter clean
       - flutter pub get
+      # 只编译flutter产物，不做ios设备构建！flutter build ios删掉！
+      - flutter assemble -d ios --debug
       - cd ios && pod install && cd ..
-      # 自动修改pbxproj，写入一个占位Team，绕过Flutter Team校验
-      - sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = XXXXXXXX;/' ios/Runner.xcodeproj/project.pbxproj
-      - flutter build ios --debug --no-codesign
+      # 直接调用xcodebuild，传入禁用签名参数，绕开Flutter的Team校验
+      - xcodebuild build -workspace ios/Runner.xcworkspace -scheme Runner -configuration Debug -destination generic/platform=iOS CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+      # 把编译出来的Runner.app复制出来，作为制品
+      - mkdir -p build/ios/iphoneos
+      - cp -r build/ios/Debug-iphoneos/Runner.app build/ios/iphoneos/Runner.app
     artifacts:
       - build/ios/iphoneos/**/*.app
