@@ -143,7 +143,7 @@ class TransferServer {
       _startReceiveTask(requestId, sender, files);
       _json(req, 200, {
         'status': 'accepted',
-        'token': ?newToken,
+        if (newToken != null) 'token': newToken,
         'requestId': requestId,
       });
     } on TimeoutException {
