@@ -167,7 +167,11 @@ class AppCore {
       profileGetter: currentProfile,
       onDeviceFound: registry.seen,
     );
-    await _discovery!.start(settings.interfaceIp);
+    // 只在选项仍然有效时使用手动指定；否则回退到自动（避免遗留的旧值把广播锁死）
+    final selected = settings.interfaceIp;
+    await _discovery!.start(
+      (selected != null && interfaceIps.contains(selected)) ? selected : null,
+    );
   }
 
   Future<void> _refreshInterfaces() async {
@@ -178,6 +182,13 @@ class AppCore {
       );
       final set = <String>{};
       for (final nic in list) {
+        // 跳过蜂窝数据 / VPN 虚拟网卡：它们的地址对同一 Wi-Fi 下的其它设备
+        // 不可达，一旦被选中，广播会从错误的网卡发出去，对端完全看不到本机
+        final nicName = nic.name.toLowerCase();
+        if (RegExp(r'^(rmnet|ccmni|pdp_ip|wwan|radio|ppp|tun|utun|ipsec|tap|wg|vpn)')
+            .hasMatch(nicName)) {
+          continue;
+        }
         for (final addr in nic.addresses) {
           set.add(addr.address);
           _ipNicName[addr.address] = nic.name;
