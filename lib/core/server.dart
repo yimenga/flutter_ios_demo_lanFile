@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:gal/gal.dart';
 
 import '../core/models.dart';
 import '../core/trust.dart';
@@ -212,7 +213,30 @@ class TransferServer {
     }
     manager.updateItemProgress(requestId, index, received);
     manager.setItemPath(requestId, index, file.path);
+    await _saveToGallery(file);
     _json(req, 200, {'status': 'ok', 'path': file.path, 'size': size});
+  }
+
+  /// 接收完成后，把图片/视频同步保存到系统相册（iOS 相册 / Android 图库）
+  Future<void> _saveToGallery(File file) async {
+    if (!(Platform.isIOS || Platform.isAndroid)) return;
+    final ext = p.extension(file.path).toLowerCase();
+    const imageExts = {
+      '.jpg', '.jpeg', '.png', '.gif', '.heic', '.heif',
+      '.webp', '.bmp', '.tif', '.tiff',
+    };
+    const videoExts = {
+      '.mp4', '.mov', '.m4v', '.avi', '.mkv', '.3gp', '.webm',
+    };
+    try {
+      if (imageExts.contains(ext)) {
+        await Gal.putImage(file.path);
+      } else if (videoExts.contains(ext)) {
+        await Gal.putVideo(file.path);
+      }
+    } catch (e) {
+      debugPrint('[server] save to gallery failed: $e');
+    }
   }
 
   Future<void> _handleComplete(HttpRequest req) async {
