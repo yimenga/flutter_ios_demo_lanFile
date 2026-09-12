@@ -96,6 +96,9 @@ class AppCore {
 
   Future<void> start() async {
     await _refreshInterfaces();
+    // iOS：首次启动就主动触发“本地网络”授权弹窗。没有授权时系统会静默丢弃
+    // 所有局域网收发（表现为扫不到设备、连接报 No route to host）。
+    unawaited(_triggerLocalNetworkPermission());
     await _startServer();
     await _startDiscovery();
 
@@ -107,6 +110,29 @@ class AppCore {
       _refreshInterfaces();
       registry.sweep();
     });
+  }
+
+  /// iOS：向同网段的网关发起一次 TCP 连接尝试，用来让系统弹出"本地网络"授权框。
+  /// 用户点"允许"之前系统会直接拒绝这次请求，所以这里不关心成败。
+  Future<void> _triggerLocalNetworkPermission() async {
+    if (!Platform.isIOS) return;
+    try {
+      final ip = effectiveIp;
+      final dot = ip.lastIndexOf('.');
+      if (dot <= 0) return;
+      final prefix = ip.substring(0, dot);
+      for (final candidate in <String>['$prefix.1', '$prefix.254']) {
+        try {
+          final socket = await Socket.connect(
+            candidate,
+            80,
+            timeout: const Duration(milliseconds: 1500),
+          );
+          socket.destroy();
+          return;
+        } catch (_) {}
+      }
+    } catch (_) {}
   }
 
   void _onSettingsChanged() {
