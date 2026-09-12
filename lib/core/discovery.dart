@@ -23,6 +23,7 @@ class DiscoveryService {
 
   RawDatagramSocket? _listener;
   final List<RawDatagramSocket> _senders = [];
+  final Map<RawDatagramSocket, String> _senderIps = {};
   Timer? _timer;
 
   Future<void> start(String? bindIp) async {
@@ -62,6 +63,7 @@ class DiscoveryService {
         );
         s.broadcastEnabled = true;
         _senders.add(s);
+        _senderIps[s] = ip;
       } catch (e) {
         debugPrint('[discovery] sender bind $ip failed: $e');
       }
@@ -104,9 +106,15 @@ class DiscoveryService {
   void _broadcast() {
     if (_senders.isEmpty) return;
     try {
-      final data = utf8.encode(jsonEncode(profileGetter().toJson()));
+      final base = profileGetter();
       for (final s in _senders) {
         try {
+          // 每张网卡用自己这一侧可达的 IP 广播：多网卡(Wi-Fi + 蜂窝/VPN)时，
+          // 对端拿到的才是能连回来的地址
+          final ip = _senderIps[s];
+          final profile =
+              (ip == null || ip.isEmpty) ? base : base.copyWith(ip: ip);
+          final data = utf8.encode(jsonEncode(profile.toJson()));
           s.send(data, InternetAddress('255.255.255.255'), discoveryPort);
         } catch (_) {}
       }
@@ -126,7 +134,9 @@ class DiscoveryService {
     // 单播回执：让对方无需能收到广播也能发现我
     final my = profileGetter();
     if (profile.id != my.id) {
-      final reply = utf8.encode(jsonEncode(my.toJson()));
+      final reply = utf8.encode(
+        jsonEncode(my.copyWith(ip: _replyIp(datagram.address.address)).toJson()),
+      );
       // 优先用绑定在 0.0.0.0 的监听 socket 发回执：系统会自动选择正确的网卡与源地址。
       // iOS 上 _senders 里可能混有 VPN/蜂窝网卡的 socket，直接用 _senders.first 可能发不出去。
       final listener = _listener;
@@ -140,6 +150,18 @@ class DiscoveryService {
       }
       _senders.firstOrNull?.send(reply, datagram.address, discoveryPort);
     }
+  }
+
+  /// 回执里应填的本地 IP：优先选与对方同网段的网卡地址
+  String _replyIp(String peerIp) {
+    final dot = peerIp.lastIndexOf('.');
+    if (dot > 0) {
+      final prefix = peerIp.substring(0, dot + 1);
+      for (final ip in _senderIps.values) {
+        if (ip.startsWith(prefix)) return ip;
+      }
+    }
+    return profileGetter().ip;
   }
 
   Future<void> stop() async {
