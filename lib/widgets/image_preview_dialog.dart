@@ -19,7 +19,7 @@ class ImagePreviewDialog extends StatelessWidget {
           child: Image.file(
             File(imagePath),
             fit: BoxFit.contain,
-            errorBuilder: (_, _, _) => const Padding(
+            errorBuilder: (_, __, ___) => const Padding(
               padding: EdgeInsets.all(32),
               child: Text(
                 '图片加载失败',
