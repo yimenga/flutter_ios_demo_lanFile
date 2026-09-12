@@ -29,6 +29,7 @@ class AppCore {
 
   /// 本机所有可用 IPv4 地址（定时刷新）
   List<String> interfaceIps = [];
+  final Map<String, String> _ipNicName = {};
 
   AppCore({
     required this.settings,
@@ -64,7 +65,33 @@ class AppCore {
     final auto = interfaceIps
         .where((ip) => !ip.startsWith('169.254'))
         .toList();
-    return auto.isNotEmpty ? auto.first : '0.0.0.0';
+    if (auto.isEmpty) return '0.0.0.0';
+    // 优先真实局域网网卡：蜂窝数据(国内常见 10.x)与 VPN 虚拟网卡的地址，
+    // 对同一 Wi-Fi 下的其他设备不可达，选错会报 "No route to host"
+    auto.sort((a, b) => _ipPreference(b).compareTo(_ipPreference(a)));
+    return auto.first;
+  }
+
+  int _ipPreference(String ip) {
+    var score = 0;
+    final nic = (_ipNicName[ip] ?? '').toLowerCase();
+    if (nic.startsWith('en') ||
+        nic.startsWith('wlan') ||
+        nic.startsWith('eth')) {
+      score += 100;
+    }
+    if (RegExp(r'^(rmnet|ccmni|pdp_ip|wwan|radio|ppp|tun|utun|ipsec|tap|wg|vpn)')
+        .hasMatch(nic)) {
+      score -= 100;
+    }
+    if (ip.startsWith('192.168.')) {
+      score += 30;
+    } else if (RegExp(r'^172\.(1[6-9]|2\d|3[01])\.').hasMatch(ip)) {
+      score += 20;
+    } else if (ip.startsWith('10.')) {
+      score += 5;
+    }
+    return score;
   }
 
   Future<void> start() async {
@@ -127,6 +154,7 @@ class AppCore {
       for (final nic in list) {
         for (final addr in nic.addresses) {
           set.add(addr.address);
+          _ipNicName[addr.address] = nic.name;
         }
       }
       interfaceIps = set.toList()..sort();
