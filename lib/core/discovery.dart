@@ -126,11 +126,19 @@ class DiscoveryService {
     // 单播回执：让对方无需能收到广播也能发现我
     final my = profileGetter();
     if (profile.id != my.id) {
-      _senders.firstOrNull?.send(
-        utf8.encode(jsonEncode(my.toJson())),
-        datagram.address,
-        discoveryPort,
-      );
+      final reply = utf8.encode(jsonEncode(my.toJson()));
+      // 优先用绑定在 0.0.0.0 的监听 socket 发回执：系统会自动选择正确的网卡与源地址。
+      // iOS 上 _senders 里可能混有 VPN/蜂窝网卡的 socket，直接用 _senders.first 可能发不出去。
+      final listener = _listener;
+      if (listener != null) {
+        try {
+          listener.send(reply, datagram.address, discoveryPort);
+          return;
+        } catch (_) {
+          // 发失败时继续走下面的兜底
+        }
+      }
+      _senders.firstOrNull?.send(reply, datagram.address, discoveryPort);
     }
   }
 
