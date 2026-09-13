@@ -25,9 +25,14 @@ class DiscoveryService {
   final List<RawDatagramSocket> _senders = [];
   final Map<RawDatagramSocket, String> _senderIps = {};
   Timer? _timer;
+  String? _bindIp;
+  DateTime _lastReceived = DateTime.now();
+  bool _restarting = false;
 
   Future<void> start(String? bindIp) async {
     await stop();
+    _bindIp = bindIp;
+    _lastReceived = DateTime.now();
     try {
       _listener = await RawDatagramSocket.bind(
         InternetAddress.anyIPv4,
@@ -35,7 +40,11 @@ class DiscoveryService {
         reuseAddress: true,
       );
       _listener!.broadcastEnabled = true;
-      _listener!.listen(_onData, onError: (_) {});
+      _listener!.listen(
+        _onData,
+        onError: (_) => _scheduleRestart(),
+        onDone: _scheduleRestart,
+      );
     } on SocketException {
       // 端口被占用（例如本应用第二个实例）：仍尝试监听
       try {
@@ -44,7 +53,11 @@ class DiscoveryService {
           0,
           reuseAddress: true,
         );
-        _listener!.listen(_onData, onError: (_) {});
+        _listener!.listen(
+          _onData,
+          onError: (_) => _scheduleRestart(),
+          onDone: _scheduleRestart,
+        );
       } catch (e) {
         debugPrint('[discovery] listen failed: $e');
         return;
@@ -81,7 +94,14 @@ class DiscoveryService {
       } catch (_) {}
     }
 
-    _timer = Timer.periodic(const Duration(seconds: 2), (_) => _broadcast());
+    _timer = Timer.periodic(const Duration(seconds: 2), (_) {
+      _broadcast();
+      // 看门狗：超过 60 秒没收到任何数据包，说明监听 socket 可能已经失效
+      // （Windows 上 UDP socket 可能因 ICMP 错误被关闭），自动重建
+      if (DateTime.now().difference(_lastReceived).inSeconds > 60) {
+        _scheduleRestart();
+      }
+    });
     _broadcast();
   }
 
@@ -122,7 +142,12 @@ class DiscoveryService {
   }
 
   void _onData(RawSocketEvent event) {
+    if (event == RawSocketEvent.closed) {
+      _scheduleRestart();
+      return;
+    }
     if (event != RawSocketEvent.read) return;
+    _lastReceived = DateTime.now();
     final datagram = _listener?.receive();
     if (datagram == null) return;
     final profile = DeviceProfile.tryParse(
@@ -162,6 +187,16 @@ class DiscoveryService {
       }
     }
     return profileGetter().ip;
+  }
+
+  /// socket 异常关闭时自动重建发现服务（2 秒后重试，避免立即重入）
+  void _scheduleRestart() {
+    if (_restarting) return;
+    _restarting = true;
+    Timer(const Duration(seconds: 2), () {
+      _restarting = false;
+      start(_bindIp);
+    });
   }
 
   Future<void> stop() async {
