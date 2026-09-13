@@ -26,6 +26,7 @@ class AppCore {
   Timer? _maintenanceTimer;
   int _lastPort = 0;
   String? _lastInterfaceIp;
+  String _lastInterfaceKey = '';
 
   /// 本机所有可用 IPv4 地址（定时刷新）
   List<String> interfaceIps = [];
@@ -106,9 +107,19 @@ class AppCore {
     _lastInterfaceIp = settings.interfaceIp;
     settings.addListener(_onSettingsChanged);
 
-    _maintenanceTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      _refreshInterfaces();
+    _maintenanceTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      await _refreshInterfaces();
       registry.sweep();
+      // 网卡列表发生变化（插拔网线、切换 Wi-Fi）时重建发现服务，
+      // 否则旧的 socket 会一直绑定在失效的网卡上，设备列表再也刷不出来
+      final key =
+          interfaceIps.where((ip) => !ip.startsWith('169.254')).join(',');
+      if (_lastInterfaceKey.isEmpty) {
+        _lastInterfaceKey = key;
+      } else if (key != _lastInterfaceKey) {
+        _lastInterfaceKey = key;
+        _startDiscovery();
+      }
     });
   }
 
