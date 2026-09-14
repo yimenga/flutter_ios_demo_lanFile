@@ -6,6 +6,10 @@
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>用于发现同一 Wi-Fi 下的其他设备并传输文件</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_lanfile._tcp</string>
+	</array>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>用于把接收到的图片和视频保存到系统相册</string>
 	<key>NSPhotoLibraryUsageDescription</key>
