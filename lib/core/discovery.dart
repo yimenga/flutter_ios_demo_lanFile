@@ -81,17 +81,20 @@ class DiscoveryService {
         debugPrint('[discovery] sender bind $ip failed: $e');
       }
     }
-    if (_senders.isEmpty) {
-      // 兜底：绑定任意地址
-      try {
-        final s = await RawDatagramSocket.bind(
-          InternetAddress.anyIPv4,
-          0,
-          reuseAddress: true,
-        );
-        s.broadcastEnabled = true;
-        _senders.add(s);
-      } catch (_) {}
+    // 始终附加一个绑定 0.0.0.0 的发送 socket（不只是兜底）：
+    // iOS 上绑定到具体网卡 IP 的 socket 向 255.255.255.255 发广播会被
+    // 系统静默丢弃（No route to host），而绑定 0.0.0.0 的 socket 由系统
+    // 自动选择网卡，广播可以正常发出去。
+    try {
+      final s = await RawDatagramSocket.bind(
+        InternetAddress.anyIPv4,
+        0,
+        reuseAddress: true,
+      );
+      s.broadcastEnabled = true;
+      _senders.add(s);
+    } catch (e) {
+      debugPrint('[discovery] any-address sender bind failed: $e');
     }
 
     _timer = Timer.periodic(const Duration(seconds: 2), (_) {
@@ -128,15 +131,35 @@ class DiscoveryService {
     try {
       final base = profileGetter();
       for (final s in _senders) {
+        // 每张网卡用自己这一侧可达的 IP 广播：多网卡(Wi-Fi + 蜂窝/VPN)时，
+        // 对端拿到的才是能连回来的地址
+        final ip = _senderIps[s];
+        final profile =
+            (ip == null || ip.isEmpty) ? base : base.copyWith(ip: ip);
+        final data = utf8.encode(jsonEncode(profile.toJson()));
         try {
-          // 每张网卡用自己这一侧可达的 IP 广播：多网卡(Wi-Fi + 蜂窝/VPN)时，
-          // 对端拿到的才是能连回来的地址
-          final ip = _senderIps[s];
-          final profile =
-              (ip == null || ip.isEmpty) ? base : base.copyWith(ip: ip);
-          final data = utf8.encode(jsonEncode(profile.toJson()));
-          s.send(data, InternetAddress('255.255.255.255'), discoveryPort);
-        } catch (_) {}
+          final sent =
+              s.send(data, InternetAddress('255.255.255.255'), discoveryPort);
+          if (sent == 0) {
+            debugPrint('[discovery] broadcast via ${ip ?? "0.0.0.0"} sent 0 bytes');
+          }
+        } catch (e) {
+          debugPrint('[discovery] broadcast via ${ip ?? "0.0.0.0"} failed: $e');
+        }
+        // iOS 对有限广播 255.255.255.255 经常静默丢包，
+        // 再补发子网定向广播（/24 启发式），双保险
+        if (ip != null && ip.isNotEmpty) {
+          final dot = ip.lastIndexOf('.');
+          if (dot > 0) {
+            try {
+              s.send(
+                data,
+                InternetAddress('${ip.substring(0, dot + 1)}255'),
+                discoveryPort,
+              );
+            } catch (_) {}
+          }
+        }
       }
     } catch (_) {}
   }
