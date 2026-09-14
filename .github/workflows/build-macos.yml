@@ -1,0 +1,43 @@
+name: Build macOS app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show toolchain versions
+        run: |
+          flutter --version
+          xcodebuild -version
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS (release)
+        run: |
+          flutter config --no-enable-swift-package-manager
+          flutter build macos --release
+
+      - name: Package app
+        run: |
+          cd build/macos/Build/Products/Release
+          zip -r -y lanfile-macos.zip *.app
+
+      - name: Upload macOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: lanfile-macos
+          path: build/macos/Build/Products/Release/lanfile-macos.zip
